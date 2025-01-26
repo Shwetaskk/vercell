@@ -1,20 +1,21 @@
 import os
 from flask import Flask, request, jsonify
 from tensorflow.keras.preprocessing import image
-from tensorflow.keras.models import load_model
-from flask_cors import CORS
 import numpy as np
 import json
+import tensorflow as tf
+from flask_cors import CORS
 
 # Path to your model
-model_path = '/Users/shweta/vercel/crop_disease_model.h5'
+model_path = '/Users/shweta/vercel/crop_disease_model.tflite'
 
-# Load your trained model using tf.keras
+# Load TensorFlow Lite model
 try:
-    model = load_model(model_path)
+    interpreter = tf.lite.Interpreter(model_path=model_path)
+    interpreter.allocate_tensors()
 except Exception as e:
     print(f"Error loading model: {e}")
-    model = None
+    interpreter = None
 
 # Load class indices (assuming you have this file)
 class_indices_file = 'class_indices.json'
@@ -73,12 +74,22 @@ def predict():
         img_array = np.expand_dims(img_array, axis=0)
         img_array /= 255.0  # Normalize the image to [0, 1]
 
-        # Make prediction
-        predictions = model.predict(img_array)
-        predicted_class = np.argmax(predictions, axis=1)
+        # Get input and output tensors
+        input_details = interpreter.get_input_details()
+        output_details = interpreter.get_output_details()
+
+        # Set the input tensor
+        interpreter.set_tensor(input_details[0]['index'], img_array.astype(np.float32))
+
+        # Run the interpreter
+        interpreter.invoke()
+
+        # Get the prediction
+        output_data = interpreter.get_tensor(output_details[0]['index'])
+        predicted_class = np.argmax(output_data, axis=1)
         predicted_label = class_labels.get(predicted_class[0], 'Unknown Class')
 
-       # Define the symptoms data
+        # Define the symptoms data
         symptoms_data = {
             "Pepper__bell___Bacterial_spot": [
                 "Dark, water-soaked spots on leaves.",
